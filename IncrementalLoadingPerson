@@ -12,6 +12,67 @@ using Windows.Web.Http;
 
 namespace DatingBoard.Resourses
 {
+    // Абстрактное определение интерфейса и класса IncrementalLoadingCollection
+    public interface IIncrementalSource<T>
+    {
+        Task<IEnumerable<T>> GetPagedItems(int pageIndex, int pageSize);
+    }
+
+    public class IncrementalLoadingCollection<T, I> : ObservableCollection<I>,
+         ISupportIncrementalLoading
+         where T : IIncrementalSource<I>, new()
+    {
+        private T source;
+        private int itemsPerPage;
+        private bool hasMoreItems;
+        private int currentPage;
+
+        public IncrementalLoadingCollection(int itemsPerPage = 20)
+        {
+            this.source = new T();
+            this.itemsPerPage = itemsPerPage;
+            this.hasMoreItems = true;
+        }
+
+        public bool HasMoreItems
+        {
+            get { return hasMoreItems; }
+        }
+
+        public IAsyncOperation<LoadMoreItemsResult> LoadMoreItemsAsync(uint count)
+        {
+            var dispatcher = Window.Current.Dispatcher;
+
+            return Task.Run<LoadMoreItemsResult>(
+                async () =>
+                {
+                    uint resultCount = 0;
+                    var result = await source.GetPagedItems(currentPage++, itemsPerPage);
+
+                    if (result == null || result.Count() == 0)
+                    {
+                        hasMoreItems = false;
+                    }
+                    else
+                    {
+                        resultCount = (uint)result.Count();
+
+                        await dispatcher.RunAsync(
+                            CoreDispatcherPriority.Normal,
+                            () =>
+                            {
+                                foreach (I item in result)
+                                    this.Add(item);
+                            });
+                    }
+
+                    return new LoadMoreItemsResult() { Count = resultCount };
+
+                }).AsAsyncOperation<LoadMoreItemsResult>();
+        }
+    }
+
+
     public class PersonGroup
     {
         public string GroupName { get; set; }     
@@ -129,37 +190,7 @@ namespace DatingBoard.Resourses
 
 
 
-
-    //Кастомизация PersonGroupe с использованием IncrementalLoading под премиумов
-    public class PersonGroupePremium : IIncrementalSource<Person>
-    {
-        public string GroupName { get; set; }
-        public ObservableCollection<Person> Persons { get; set; }
-        private readonly Task _initializingTask;
-
-        public PersonGroupePremium()
-        {
-            Persons = new ObservableCollection<Person>();
-            Persons = MysqlWrapper.DataQuerySync(Services.GetData("", "premium", "2000"));
-        }
-
-
-
-        public async Task<IEnumerable<Person>> GetPagedItems(int pageIndex, int pageSize)
-        {
-            return await Task.Run<IEnumerable<Person>>(() =>
-            {
-                var result = (from p in Persons
-                              select p).Skip(pageIndex * pageSize).Take(pageSize);
-
-                return result;
-            });
-        }
-    }
-
-
-
-    //Кастомизация PersonGroupe с использованием IncrementalLoading под юзеров рядом
+    //Кастомизация PersonGroupe с использованием IncrementalLoading под юзеров сгруппированных рядом
     public class PersonGroupeNear : IIncrementalSource<Person>
     {
         public string GroupName { get; set; }
@@ -183,91 +214,6 @@ namespace DatingBoard.Resourses
 
                 return result;
             });
-        }
-    }
-
-
-    //Кастомизация PersonGroupe с использованием IncrementalLoading под поиск
-    public class PersonGroupeSearch : IIncrementalSource<Person>
-    {
-        public string GroupName { get; set; }
-        public ObservableCollection<Person> Persons { get; set; }
-
-        public PersonGroupeSearch()
-        {
-            Persons = new ObservableCollection<Person>();
-            Persons = MysqlWrapper.DataQuerySync(Services.GetData(Windows.Storage.ApplicationData.Current.LocalSettings.Values["SearchData"].ToString(), "search", "2000"));
-        }
-        public async Task<IEnumerable<Person>> GetPagedItems(int pageIndex, int pageSize)
-        {
-            return await Task.Run<IEnumerable<Person>>(() =>
-            {
-                var result = (from p in Persons
-                              select p).Skip(pageIndex * pageSize).Take(pageSize);
-
-                return result;
-            });
-        }
-    }
-
-
-    // Абстрактное определение интерфейса и класса IncrementalLoadingCollection
-    public interface IIncrementalSource<T>
-    {
-        Task<IEnumerable<T>> GetPagedItems(int pageIndex, int pageSize);
-    }
-
-    public class IncrementalLoadingCollection<T, I> : ObservableCollection<I>,
-         ISupportIncrementalLoading
-         where T : IIncrementalSource<I>, new()
-    {
-        private T source;
-        private int itemsPerPage;
-        private bool hasMoreItems;
-        private int currentPage;
-
-        public IncrementalLoadingCollection(int itemsPerPage = 20)
-        {
-            this.source = new T();
-            this.itemsPerPage = itemsPerPage;
-            this.hasMoreItems = true;
-        }
-
-        public bool HasMoreItems
-        {
-            get { return hasMoreItems; }
-        }
-
-        public IAsyncOperation<LoadMoreItemsResult> LoadMoreItemsAsync(uint count)
-        {
-            var dispatcher = Window.Current.Dispatcher;
-
-            return Task.Run<LoadMoreItemsResult>(
-                async () =>
-                {
-                    uint resultCount = 0;
-                    var result = await source.GetPagedItems(currentPage++, itemsPerPage);
-
-                    if (result == null || result.Count() == 0)
-                    {
-                        hasMoreItems = false;
-                    }
-                    else
-                    {
-                        resultCount = (uint)result.Count();
-
-                        await dispatcher.RunAsync(
-                            CoreDispatcherPriority.Normal,
-                            () =>
-                            {
-                                foreach (I item in result)
-                                    this.Add(item);
-                            });
-                    }
-
-                    return new LoadMoreItemsResult() { Count = resultCount };
-
-                }).AsAsyncOperation<LoadMoreItemsResult>();
         }
     }
 }
