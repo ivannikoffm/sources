@@ -39,6 +39,7 @@ namespace DatingBoard.Resourses
             get { return hasMoreItems; }
         }
 
+        // Метод асинхронно добавляет новые элементы в коллекцию при скролле до тех пор, пока они не закончатся
         public IAsyncOperation<LoadMoreItemsResult> LoadMoreItemsAsync(uint count)
         {
             var dispatcher = Window.Current.Dispatcher;
